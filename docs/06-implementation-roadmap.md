@@ -259,10 +259,15 @@ Système complet prêt pour le paper trading.
 
 ---
 
-## Phase 7 : Paper Trading (60 jours minimum)
+## Phase 7 : Paper Trading (30 jours minimum)
 
-**Dépendances** : Phase 6 validée
-**Objectif** : Validation live sur Binance Futures Testnet
+**Dépendances** : Phase 6 validée + Phase 2.5 Replay Mode validé sur 8-10 actifs
+
+> ⚠️ **Condition** : La réduction de 60 → 30 jours est conditionnée à un Replay Mode
+> validé sur au moins 8 actifs (5 Phase 1 + 3 supplémentaires). Sans Replay Mode
+> validé, la durée reste 60 jours minimum (AD-017).
+
+**Objectif** : Validation infrastructure — latence, rejets d'ordres, déconnexions WebSocket
 
 ### Configuration
 - Capital testnet : 10,000 USDT
@@ -278,7 +283,7 @@ Système complet prêt pour le paper trading.
 - Incidents et edge cases
 
 ### Critères de passage
-- Sharpe live >= 70% du Sharpe backtest
+- Sharpe live >= 60% du Sharpe backtest
 - Zéro incident critique (30 derniers jours)
 - Tous les régimes de marché traversés
 - DD réel <= DD backtest
@@ -310,16 +315,16 @@ Système complet prêt pour le paper trading.
 |---|---|---|
 | Phase 1 | Risk Manager | 2 semaines |
 | Phase 2 | Data Pipeline + Backtester | 2 semaines |
-| Phase 2.5 | Replay Mode | 1-2 jours |
+| Phase 2.5 | Replay Mode (8-10 actifs) | 1-2 semaines |
 | Phase 3 | ICT Detectors | 2 semaines |
 | Phase 4 | Strategy Engine (scoring + lifecycle) | 2 semaines |
 | Phase 5 | LLM Analyst + On-Chain Integration | 2 semaines |
 | Phase 6 | Intégration + Tests E2E | 2 semaines |
-| Phase 7 | Paper Trading | 2 mois |
+| Phase 7 | Paper Trading (conditionnel) | 1 mois (30j si Replay validé) |
 | Phase 8 | Capital Réel | 3-6 mois |
 
 **Total développement** : ~12 semaines (Phases 1-6)
-**Total validation** : ~2-6 mois (Phases 7-8)
+**Total validation** : ~1.5-6 mois (Phases 7-8, selon Replay Mode)
 **Total projet** : ~4-8 mois avant scaling réel
 
 ---
@@ -350,7 +355,7 @@ Le Replay Mode (Phase 2.5) sert à valider visuellement chaque détecteur dès s
 | LLM hallucinations | Moyen | Moyen | Poids limité (20% macro + 15% on-chain déterministe), fallback structural |
 | Bugs silencieux Risk Manager | Faible | Critique | Tests adversariaux exhaustifs Phase 1 |
 | Latence Algérie → Binance | Certain | Faible | 15m-4H timeframe, pas de sub-minute |
-| Paper trading non représentatif | Moyen | Élevé | 60 jours minimum, validation multi-régime |
+| Paper trading non représentatif | Moyen | Élevé | 30 jours minimum (conditionné au Replay Mode validé), validation multi-régime |
 | Impulsivité humaine | Moyen | Élevé | Kill Switch codé dur, commit freeze |
 | API Binance downtime | Faible | Faible | Retry exponentiel, defensive mode |
 | Changement réglementaire | Faible | Critique | Monitoring légal Algérie, fonds P2P uniquement |

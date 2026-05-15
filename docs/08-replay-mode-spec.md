@@ -611,6 +611,15 @@ scripts/
 
 ## 13. Limites du replay mode
 
+> ⚠️ **Le Replay Mode ne remplace PAS le Paper Trading. Il le raccourcit.**
+> 
+> Le Replay Mode valide la **logique** (détecteurs ICT, scoring, lifecycle, bias composite).
+> Le Paper Trading valide l'**infrastructure** (latence réelle, rejets Binance, WebSocket,
+> ordres OCO). Les deux sont complémentaires et obligatoires.
+> 
+> Un Replay Mode validé sur 8-10 actifs permet de réduire la Phase 7 de 60 → 30 jours,
+> mais ne la supprime pas.
+
 | Limite | Impact | Mitigation |
 |--------|--------|------------|
 | Pas de latence réseau réelle | Les signaux semblent plus propres | Ajouter délai aléatoire 50-300ms dans la boucle |
@@ -618,7 +627,7 @@ scripts/
 | Pas de rejets d'ordres Binance | Tous les Intent passent | Simuler les filtres Binance (minNotional, stepSize) |
 | Pas de déconnexions WebSocket | Robustesse non testée | → Phase 7 (Paper Trading) pour ça |
 | Pas de funding rate variable | P&L overnight simulé | Appliquer funding rate historique depuis les données |
-| Données historiques = pas de black swans | Edge cases non découverts | Compléter avec paper trading réel |
+| Données historiques = pas de black swans | Edge cases non découverts | → Phase 7 (Paper Trading) pour les edge cases |
 | LLM appelé sur données passées | Peut "voir le futur" via les données | Le LLM ne reçoit que les données jusqu'à la barre courante |
 
 ---

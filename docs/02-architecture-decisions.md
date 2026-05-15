@@ -199,11 +199,13 @@
 
 ## AD-017 : Paper Trading
 
-**Décision** : 60 jours minimum sur Binance Futures Testnet
+**Décision** : 30 jours minimum sur Binance Futures Testnet (si Replay Mode Phase 2.5 validé sur multi-actifs). Sinon 60 jours minimum.
 **Rejeté** : Passage direct en réel après backtest
 **Justification** :
-- Le backtest ne capture pas : latence réseau, rejets d'ordres, déconnexions WebSocket.
-- Critères objectifs de passage : Sharpe live >= 70% du Sharpe backtest.
+- Le Replay Mode (bar-par-bar) valide la logique ICT, le scoring, et le lifecycle sur données historiques.
+- Le Paper Trading valide exclusivement l'infrastructure : latence réseau, rejets d'ordres, déconnexions WebSocket.
+- La séparation des responsabilités (logique vs infrastructure) permet de réduire la durée sans sacrifier la robustesse.
+- Critères objectifs de passage : Sharpe live >= 60% du Sharpe backtest (si Replay validé).
 - Zéro incident critique (perte d'état, ordre incohérent) sur les 30 derniers jours.
 - Tous les régimes de marché traversés au moins une fois.
 
