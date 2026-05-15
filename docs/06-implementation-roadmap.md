@@ -9,9 +9,10 @@
 ```
 Phase 1 : Risk Manager ──────────────────┐
 Phase 2 : Data Pipeline + Backtester ────┤
+Phase 2.5 : Replay Mode ─────────────────┤
 Phase 3 : ICT Detectors ─────────────────┤ Séquence
 Phase 4 : Strategy Engine ───────────────┤ critique
-Phase 5 : LLM Analyst ───────────────────┤ (ordre
+Phase 5 : LLM Analyst + On-Chain ────────┤ (ordre
 Phase 6 : Intégration + Tests ───────────┤ imposé)
 Phase 7 : Paper Trading (60 jours) ──────┘
 Phase 8 : Capital réel (3-6 mois)
@@ -91,6 +92,39 @@ Rapport complet avec toutes les métriques.
 
 ---
 
+## Phase 2.5 : Replay Mode (1-2 jours)
+
+**Dépendances** : Phase 2 (Data Pipeline)
+**Objectif** : Validation visuelle + debug des détecteurs ICT sans attendre le temps réel
+
+### Livrables
+
+| Module | Description |
+|---|---|
+| Replay Engine | Boucle bar-par-bar, 5 modes (detectors, full, compare, what-if, multi-TF) |
+| Historical Loader | Chargement Parquet/Postgres/CCXT, compatible format live |
+| Plotly Renderer | Swings, FVG, Kill Zones, trades tracés en temps simulé |
+| Logger + Report | CSV signaux + trades, rapport JSON automatique |
+| Golden Dataset | Jeu de référence pour tests de non-régression |
+| On-Chain Injection | Snapshots on-chain historiques injectables dans le replay |
+
+### Modes de replay
+
+```
+detectors   : Signaux bruts uniquement (debug visuel)
+full        : Pipeline complet jusqu'au TradeIntent fictif
+compare     : A/B test de deux configurations côte à côte
+what-if     : Test de paramètres isolés (--threshold 45 vs 60)
+multi-TF    : 15m + 1H + 4H simultanés
+```
+
+### Sortie Phase 2.5
+Tu peux voir tes signaux ICT tracés sur graphique en 30 minutes (3 mois de données).
+Validation visuelle immédiate, bien plus rapide que le paper trading.
+Spécification complète : [08-replay-mode-spec.md](08-replay-mode-spec.md)
+
+---
+
 ## Phase 3 : ICT Detectors (semaines 5-6)
 
 **Dépendances** : Phase 2 (OHLCV disponible)
@@ -140,22 +174,23 @@ Les signaux bruts alimentent le Signal Pool.
 | Scoring Grids | 6 grilles de scoring par setup type |
 | Decay Engine | Formule exponentielle, taux par type |
 | Interaction Rules | Réactivation sweep+FVG, SMT+sweep, AMD+bias |
-| Bias Composite | 0.50 structural + 0.35 LLM + 0.15 funding |
+| Bias Composite | 0.50 structural + 0.20 LLM + 0.15 on-chain + 0.15 funding |
 | TradeIntent Generator | Score → tier → TradeIntent avec stop/TP ICT |
 | Kelly Calculator | Rolling Kelly par setup, auto-disable |
 
 ### Sortie Phase 4
 Le Strategy Engine reçoit des signaux bruts, les score, les fait vivre/mourir,
 et génère des TradeIntent. Backtest complet de stratégie ICT possible.
+Le bias composite est prêt à recevoir les 4 composants (structural, LLM, on-chain, funding).
 
 ---
 
-## Phase 5 : LLM Analyst (semaine 9)
+## Phase 5 : LLM Analyst + On-Chain Integration (semaines 9-10)
 
 **Dépendances** : Phases 3+4 (contexte ICT disponible)
-**Objectif** : Intégration DeepSeek V4 pour biais horaire
+**Objectif** : Intégration DeepSeek V4 (macro) + pipeline on-chain (netflow, stablecoins, delta)
 
-### Livrables
+### Livrables LLM Macro
 
 | Module | Description |
 |---|---|
@@ -163,12 +198,33 @@ et génère des TradeIntent. Backtest complet de stratégie ICT possible.
 | API Client | DeepSeek V4 avec retry + timeout |
 | Response Parser | JSON parsing avec fallback et validation |
 | Bias History | Stockage Postgres des biais |
-| Composite Integrator | Injection du bias LLM dans le composite |
+| Composite Integrator | Injection du bias LLM dans le composite (20%) |
 | Defensive Mode | Fallback TTL → pas de trades |
 
+### Livrables On-Chain (nouveau)
+
+| Module | Fichier(s) | Description |
+|---|---|---|
+| On-Chain Collector | `core/onchain/collector.py` | Glassnode (netflow), DefiLlama (stablecoins USDT/USDC), Binance (aggTrades delta) |
+| Post-Processor | `core/onchain/post_processor.py` | 9 règles de parsing déterministes — phrase LLM → deltas numériques |
+| On-Chain Bias | `core/onchain/bias.py` | Calcul du 15% on-chain dans le composite |
+| Stockage | Tables `on_chain_snapshots`, `on_chain_bias_history` | Postgres |
+
+### Post-Processing (déterministe)
+
+| Motif LLM | Delta |
+|---|---|
+| Netflow sorties (outflow) | +0.10 / -0.10 |
+| Stablecoin minting (>500M/24h) | +0.05 / -0.05 |
+| Delta divergence bullish/bearish | +0.05 / -0.05 |
+| Confluence max (3 signaux) | ±0.15 |
+| Données insuffisantes / neutre | 0.00 |
+
 ### Sortie Phase 5
-Le LLM alimente le bias_composite toutes les heures.
+Le LLM alimente le bias_composite (20% macro + 15% on-chain).
 Le système peut tourner avec ou sans LLM (fallback structural+funding).
+Le module on-chain est entièrement backtestable via le replay mode (Phase 2.5).
+Spécification complète : [07-on-chain-integration.md](07-on-chain-integration.md)
 
 ---
 
@@ -254,14 +310,15 @@ Système complet prêt pour le paper trading.
 |---|---|---|
 | Phase 1 | Risk Manager | 2 semaines |
 | Phase 2 | Data Pipeline + Backtester | 2 semaines |
+| Phase 2.5 | Replay Mode | 1-2 jours |
 | Phase 3 | ICT Detectors | 2 semaines |
 | Phase 4 | Strategy Engine (scoring + lifecycle) | 2 semaines |
-| Phase 5 | LLM Analyst | 1 semaine |
+| Phase 5 | LLM Analyst + On-Chain Integration | 2 semaines |
 | Phase 6 | Intégration + Tests E2E | 2 semaines |
 | Phase 7 | Paper Trading | 2 mois |
 | Phase 8 | Capital Réel | 3-6 mois |
 
-**Total développement** : ~11 semaines (Phases 1-6)
+**Total développement** : ~12 semaines (Phases 1-6)
 **Total validation** : ~2-6 mois (Phases 7-8)
 **Total projet** : ~4-8 mois avant scaling réel
 
@@ -271,14 +328,17 @@ Système complet prêt pour le paper trading.
 
 ```
 Phase 1 ──────┐
-              ├──► Phase 2 ──► Phase 3 ──► Phase 4 ──┐
-              │                                       ├──► Phase 6 ──► Phase 7 ──► Phase 8
-              └──────────────────────────► Phase 5 ──┘
+              ├──► Phase 2 ──► Phase 2.5 ──► Phase 3 ──► Phase 4 ──┐
+              │                                                      ├──► Phase 6 ──► Phase 7 ──► Phase 8
+              └─────────────────────────────────────────► Phase 5 ──┘
+                                                              │
+                                                        On-Chain Module
 ```
 
-Les Phases 1-2-3-4 sont séquentielles.
-La Phase 5 (LLM) peut être développée en parallèle des Phases 3-4.
+Les Phases 1-2-2.5-3-4 sont séquentielles.
+La Phase 5 (LLM + On-Chain) peut être développée en parallèle des Phases 3-4.
 La Phase 6 est le point d'intégration.
+Le Replay Mode (Phase 2.5) sert à valider visuellement chaque détecteur dès sa création.
 
 ---
 
@@ -287,7 +347,7 @@ La Phase 6 est le point d'intégration.
 | Risque | Probabilité | Impact | Mitigation |
 |---|---|---|---|
 | Overfitting backtest | Élevé | Critique | Walk-forward obligatoire, OOS validation |
-| LLM hallucinations | Moyen | Moyen | Poids limité (35%), fallback structural |
+| LLM hallucinations | Moyen | Moyen | Poids limité (20% macro + 15% on-chain déterministe), fallback structural |
 | Bugs silencieux Risk Manager | Faible | Critique | Tests adversariaux exhaustifs Phase 1 |
 | Latence Algérie → Binance | Certain | Faible | 15m-4H timeframe, pas de sub-minute |
 | Paper trading non représentatif | Moyen | Élevé | 60 jours minimum, validation multi-régime |
