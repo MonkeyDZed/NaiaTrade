@@ -3,6 +3,14 @@
 credentials.*
 *.key
 
+# Data — track structure, ignore content
+data/**/*
+!data/.gitkeep
+
+# Reports — track structure, ignore content
+reports/**/*
+!reports/.gitkeep
+
 # PDF / binaries
 *.pdf
 
@@ -12,10 +20,6 @@ __pycache__/
 *.egg-info/
 .venv/
 venv/
-
-# Data
-data/
-*.parquet
 
 # IDE
 .idea/
