@@ -1,7 +1,6 @@
 # NaiaTrade
 
-Bot de trading automatisé ICT (Inner Circle Trader) sur Binance Futures — architecture modulaire, Risk Manager durci, LLM supervisé, données on-chain intégrées.
-
+NaiaTrade est un moteur de trading ICT (Inner Circle Trader) probabiliste sur Binance Futures, multi-TF, avec supervision LLM + enrichissement on-chain, validé via replay mode avant paper trading, et protégé par un Risk Manager ultra-conservateur.
 ---
 
 ## Vue d'ensemble
