@@ -1,0 +1,337 @@
+# NaiaTrade — ICT Scoring & Lifecycle Config v1.3
+# Sections 16-20 de docs/01-ict-specs-v1.3.md
+# Ce fichier est la source YAML de la spec ICT pour le Strategy Engine.
+
+# ========================================================================
+# 16. SIGNAL LIFECYCLE ENGINE (v1.3)
+# ========================================================================
+signal_lifecycle:
+  description: >
+    Chaque signal ICT suit un cycle de vie en 5 états.
+    Le scoring et le decay sont appliqués à chaque transition.
+    Un signal peut être réactivé par un événement externe
+    (interaction rule).
+
+  states:
+    - DETECTED:
+        description: >
+          Le pattern vient d'être identifié par un détecteur
+          (sweep, FVG, SMT, AMD, Silver Bullet, Judas Swing).
+          Score initial = somme des poids des conditions remplies.
+          Non tradable immédiatement : doit passer en ACTIVE.
+        entry_condition: "pattern_detector_fires"
+
+    - ACTIVE:
+        description: >
+          Le signal est valide et tradable. Son score actuel
+          détermine le tier (minimal/standard/premium).
+          Le Strategy Engine peut générer un TradeIntent.
+        entry_condition: "score >= minimal_threshold AND not stale"
+        decay_applies: true
+
+    - REINFORCED:
+        description: >
+          Un signal ACTIVE ou DECAYING reçoit un bonus de score
+          suite à une interaction rule (ex: FVG apparaît au
+          niveau d'un sweep vieillissant). Le score est augmenté
+          et le decay timer est reset.
+        entry_condition: "interaction_rule_fires"
+        effect: "score += reaction_bonus; decay_timer_reset"
+
+    - DECAYING:
+        description: >
+          Le signal perd du score à chaque nouvelle bougie sans
+          être tradé. Il reste dans le pool mais avec un score
+          décroissant. Peut être réactivé via REINFORCED.
+        entry_condition: "score drops below premium_threshold"
+        decay_applies: true
+
+    - INVALIDATED:
+        description: >
+          Le signal est retiré du pool. Soit parce que son score
+          est tombé sous le seuil d'invalidation (40), soit parce
+          que le prix a traversé la zone (FVG touché = consumé,
+          sweep invalidé par un move contraire).
+        entry_condition: "score < invalidation_threshold OR price_consumed_signal"
+        tradable: false
+
+  invalidation_threshold: 40
+  # Score < 40 → INVALIDATED, retiré du pool actif.
+  # Seuil unique pour tous les types de signaux.
+
+# ========================================================================
+# 17. SIGNAL INTERACTIONS (v1.3)
+# ========================================================================
+signal_interactions:
+  description: >
+    Règles de réactivation et de bonus entre signaux de types différents.
+    Quand deux signaux coexistent au même niveau de prix (±tolerance),
+    ils interagissent. Sans ces règles, le decay tuerait des setups
+    légitimes où le sweep précède le FVG.
+
+  tolerance_pct_atr: 0.3
+  # ±0.3 × ATR autour du niveau pour considérer deux signaux "au même endroit"
+
+  rules:
+    sweep_plus_fvg:
+      condition: >
+        Un sweep (ACTIVE ou DECAYING) et un FVG nouvellement détecté
+        partagent le même niveau de prix (±tolerance).
+      effect:
+        sweep: {reaction_bonus: +15, decay_timer_reset: true}
+        fvg:   {reaction_bonus: 0}
+        # Le sweep gagne +15pts, le FVG n'est pas modifié.
+      description: >
+        Cas classique ICT : le sweep crée la liquidité, le FVG confirme
+        la zone d'entrée. Le sweep est réactivé même s'il avait commencé
+        à dégrader.
+
+    smt_plus_sweep:
+      condition: >
+        Un SMT divergence (cross-asset) confirmé ET un sweep sur l'actif
+        secondaire au même moment (±2 bougies).
+      effect:
+        sweep: {decay_rate_multiplier: 0.5}
+        smt:   {reaction_bonus: +10}
+      description: >
+        La divergence SMT donne un contexte macro au sweep local.
+        Le decay du sweep est ralenti de moitié.
+
+    amd_plus_bias:
+      condition: >
+        Un cycle AMD a une P_distribution > 0.65 ET le bias composite
+        est aligné avec la direction de la distribution.
+      effect:
+        all_signals_in_range: {lifetime_multiplier: 2.0}
+      description: >
+        Quand l'AMD se confirme dans la direction du biais, TOUS les
+        signaux dans le range d'accumulation voient leur durée de vie
+        doublée. Le marché "valide" le contexte.
+
+    fvg_consumed:
+      condition: "price crosses the FVG zone"
+      effect:
+        fvg: {state: INVALIDATED, reason: "consumed_by_price"}
+        # Aucun effet sur les autres signaux au même niveau.
+
+    sweep_invalidated:
+      condition: >
+        Prix traverse le niveau du swing dans la direction OPPOSÉE
+        au sweep après que le sweep ait été confirmé.
+      effect:
+        sweep: {state: INVALIDATED, reason: "counter_sweep"}
+
+# ========================================================================
+# 18. SIGNAL SCORING + DECAY (remplace trade_intent.tiers v1.2)
+# ========================================================================
+signal_scoring:
+  description: >
+    Remplace le système de tiers rigide (minimal/standard/premium avec
+    all_of/any_of) par un scoring pondéré continu. Chaque type de setup
+    a sa propre grille de poids. Le score final détermine le tier via
+    des seuils. Le LLM est intégré via bias_aligned_composite.
+
+  global:
+    invalidation_threshold: 40
+    # Calibré pour EXPECTANCY MAX : seuils de scoring abaissés
+    # pour capturer plus de trades (15-25/mois) avec un edge stable.
+
+    bias_composite_formula:
+      structural_weight: 0.50
+      llm_weight: 0.20          # Mis à jour : 35% → 20% (macro), +15% on-chain séparé
+      onchain_weight: 0.15
+      funding_weight: 0.15
+      min_llm_confidence: 0.60
+      description: >
+        Si LLM confidence < 0.6, le poids LLM est redistribué au
+        structural (0.85) et funding (0.15). bias_aligned_composite = True
+        si bias_score final * direction_trade > 0.
+
+  scoring_grids:
+    # ---- Liquidity Sweep ----
+    liquidity_sweep:
+      weights:
+        sweep_anchored_to_external: 35
+        sweep_anchored_to_short: 25
+        sweep_anchored_to_micro: 15
+        bias_aligned_composite: 20
+        kill_zone_active: 10
+        price_in_correct_zone: 10
+        fvg_in_post_sweep_zone: 10
+        smt_confirmed: 10
+        delta_divergence: 5
+      # Max théorique : 35 + 20 + 10 + 10 + 10 + 10 + 5 = 100
+      thresholds:
+        minimal: 45
+        standard: 60
+        premium: 80
+
+    # ---- Silver Bullet ----
+    silver_bullet:
+      weights:
+        fvg_in_sb_window: 30
+        bias_aligned_composite: 25
+        fvg_in_correct_zone: 20
+        judas_swing_preceding: 15
+        smt_cross_asset: 10
+      # Max théorique : 30 + 25 + 20 + 15 + 10 = 100
+      thresholds:
+        standard: 50
+        premium: 70
+
+    # ---- AMD Distribution ----
+    amd_distribution:
+      weights:
+        amd_cycle_confirmed: 40
+        bias_aligned_composite: 25
+        external_sweep_preceding: 20
+        fvg_expansion: 15
+      # Max théorique : 40 + 25 + 20 + 15 = 100
+      thresholds:
+        standard: 55
+        premium: 75
+
+    # ---- Turtle Soup ----
+    turtle_soup:
+      weights:
+        turtle_soup_external: 35
+        turtle_soup_short: 25
+        turtle_soup_micro: 15
+        bias_aligned_composite: 20
+        kill_zone_active: 15
+        fvg_in_rejection_zone: 15
+      thresholds:
+        standard: 55
+        premium: 75
+
+    # ---- Judas Swing ----
+    judas_swing:
+      weights:
+        judas_swing_detected: 35
+        bias_aligned_composite: 25
+        amd_phase_confirmed: 20
+        fvg_after_reversal: 20
+      thresholds:
+        standard: 55
+        premium: 80
+
+    # ---- SMT Cross-Asset ----
+    smt_cross_asset:
+      weights:
+        smt_divergence_confirmed: 35
+        ict_setup_on_secondary: 30
+        bias_aligned_composite: 20
+        kill_zone_active: 15
+      # Max théorique : 35 + 30 + 20 + 15 = 100
+      thresholds:
+        standard: 50
+        premium: 70
+      correlation_requirement:
+        method: "rolling_pearson_7d"
+        min_correlation: 0.5
+        min_stability: 0.6
+        # Si corrélation < 0.5 ou instable → smt_divergence = 0 pts
+
+  signal_decay:
+    enabled: true
+    formula: "score * exp(-rate * bars_since_detection)"
+    rates:
+      sweep: 0.20
+      fvg: 0.15
+      smt: 0.25
+      amd: 0.10
+      delta: 0.20
+    invalidation_threshold: 40
+    # interaction rules (section 17) peuvent reset le decay timer
+
+  tier_assignment:
+    description: >
+      Le score final (après scoring + decay + interactions) détermine
+      le tier du TradeIntent. Le size_multiplier et le leverage mapping
+      sont ceux déjà définis dans risk_interface.
+    mapping:
+      score < 45: NO_TRADE
+      score 45-59: MINIMAL    # size_multiplier: 0.5
+      score 60-79: STANDARD   # size_multiplier: 1.0
+      score >= 80: PREMIUM    # size_multiplier: 1.25-1.8
+
+# ========================================================================
+# 19. GLOBAL MARKET STATE (extension v1.3)
+# ========================================================================
+global_market_state:
+  description: >
+    État unifié du marché, mis à jour à chaque bar_close.
+    Tous les détecteurs LISENT cet état, aucun ne le recalcule.
+    Évite les divergences runtime entre modules.
+
+  components:
+    trend:
+      source: trend_state (section 6)
+      refresh: on_1H_bar_close
+      fields: [state, bias_label, bias_score, last_choch_time]
+
+    session:
+      source: kill_zones (section 7) + crypto_adaptations
+      refresh: on_each_bar_close
+      fields:
+        - active_kill_zone: null | LONDON | NY_AM | NY_PM | ASIAN
+        - key_time_proximity_min: int
+        - is_weekend: bool
+        - weekend_mode_active: bool
+        - volume_ratio_vs_median_7d: float
+
+    volatility:
+      source: calculated from OHLCV 15m/1H/4H
+      refresh: on_1H_bar_close
+      fields:
+        - atr_pct_1H: float
+        - atr_pct_4H: float
+        - regime: LOW_VOL | NORMAL | HIGH_VOL | EXTREME
+        - volume_vs_avg_7d: float
+
+    liquidity:
+      source: swing_detection (section 2) + AMD (section 8)
+      refresh: on_each_bar_close
+      fields:
+        - phase: PRE_RANGE | ACCUMULATION | MANIPULATION | DISTRIBUTION
+        - range_boundaries: {high: float, low: float} | null
+        - nearest_external_swing_high: float | null
+        - nearest_external_swing_low: float | null
+        - layers_freshness: {micro: bool, short_term: bool, external: bool}
+
+  consumers:
+    - signal_scoring (lecture bias_aligned, kill_zone_active)
+    - amd (lecture range_boundaries, phase)
+    - smt_cross_asset (lecture trend_state pour direction)
+    - strategy_engine (lecture complete pour décision finale)
+    - risk_manager (lecture volatility.regime pour leverage cap)
+    - llm_analyst (lecture complete pour contexte horaire)
+
+# ========================================================================
+# 20. SMT CORRELATION (corrigé v1.3)
+# ========================================================================
+smt_correlation:
+  method: rolling_pearson_7d_with_stability_filter
+  description: >
+    Remplace le seuil fixe de 0.6 par une corrélation glissante avec
+    filtre de stabilité. Retourne 0 si la corrélation n'est pas
+    suffisamment stable pour être exploitable.
+
+  calculation:
+    rolling_corr: "pearson_r(btc_returns, alt_returns, window=7d)"
+    rolling_mean_corr_30d: "mean of rolling_corr over 30 days"
+    stability: "1 - abs(rolling_corr - rolling_mean_corr_30d)"
+
+  validity_check:
+    min_correlation: 0.5
+    min_stability: 0.6
+    description: >
+      corrélation < 0.5 → SMT non fiable (actifs découplés)
+      stabilité < 0.6 → corrélation trop erratique, faux signaux probables
+      Les deux conditions doivent être remplies pour que le SMT
+      génère des points de scoring (sinon 0 pts).
+
+  integration:
+    fed_into: "signal_scoring.scoring_grids.smt_cross_asset.smt_divergence_confirmed"
+    behavior: "if not valid → weight = 0 for this signal instance"
+    update_frequency: on_4H_bar_close
