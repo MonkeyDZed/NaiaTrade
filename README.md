@@ -394,6 +394,7 @@ Phase 8 (Live Réel)
 | [`docs/06-implementation-roadmap.md`](docs/06-implementation-roadmap.md) | Roadmap 8 phases, dépendances, risques |
 | [`docs/07-on-chain-integration.md`](docs/07-on-chain-integration.md) | On-Chain — Netflow, Stablecoins, Delta, Post-Processor |
 | [`docs/08-replay-mode-spec.md`](docs/08-replay-mode-spec.md) | Replay Mode — bar-par-bar, 5 modes, Plotly |
+| [`docs/09-sltp-optimization.md`](docs/09-sltp-optimization.md) | SL/TP Optimization — structure ICT + calibration walk-forward + gestion dynamique |
 
 ---
 
@@ -406,8 +407,8 @@ Phase 8 (Live Réel)
 | Profit factor | > 1.5 |
 | Win rate | 56-58% |
 | Trades/mois | 15-25 |
-| Paper trading | 60 jours minimum |
-| Sharpe live vs backtest | ≥ 70% |
+| Paper trading | 30 jours minimum (conditionné Replay validé) |
+| Sharpe live vs backtest | ≥ 60% |
 
 ---
 

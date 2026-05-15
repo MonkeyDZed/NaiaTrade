@@ -325,12 +325,56 @@ score_decayed = score_initial × exp(-rate × bars_since_detection)
 
 ---
 
-## 21. Risk Manager (6 règles)
+## 21. Stop Loss & Take Profit par Setup
+
+> Spécification complète : [09-sltp-optimization.md](09-sltp-optimization.md)
+
+| Setup | SL | TP1 (50% close) | TP2 (runner) |
+|-------|----|-----------------|--------------|
+| **Judas Swing** | Au-delà du range sweepé + `0.3 × ATR` | Boundary opposée du range | External swing opposé (4H) + FVG |
+| **AMD Distribution** | Boundary opposée du range | FVG adjacent | Prochain niveau de liquidité (swing 4H) |
+| **Turtle Soup** | Buffer ATR : 0.2 / 0.4 / 0.7 (micro/short/external) | Zone de manipulation opposée | External swing opposé |
+| **Unicorn Model** | Swing external + `0.7 × ATR` | FVG premium + OTE overlap | Liquidité adverse opposée |
+| **Silver Bullet** | Swing opposé le plus proche + `0.3 × ATR` | FVG dans la fenêtre 15:00-16:00 | External swing opposé (4H) |
+| **Sweep / FVG Standard** | Au-delà du swing/FVG de référence + `0.2 × ATR` | FVG adjacent ou OTE | External swing opposé ou equal highs/lows |
+| **SMT Cross-Asset** | Au-delà du swing de divergence + `0.2 × ATR` | FVG adjacent | External swing opposé (4H) |
+
+**Gestion dynamique** :
+- TP1 atteint → close 50% position + SL → breakeven
+- Signal DECAYING (score < 45) → sortie anticipée
+- Signal INVALIDATED (score < 40) → sortie immédiate
+- Score PREMIUM (≥ 80) → trailing SL conditionnel sur swings LTF
+
+**Validation Risk Manager** (règle 2) :
+- distance(entry, SL) ∈ [0.1%, 20%] du prix
+- distance(entry, SL) ≥ 2 × distance(entry, liquidation)
+- OCO atomique — si SL rejeté → entrée annulée
+
+---
+
+## 22. ATR Multipliers Calibration
+
+Calibration statistique walk-forward des buffers ATR, plafonnée ±30% du standard ICT.
+
+| Paramètre | Valeur |
+|-----------|--------|
+| Méthode | Walk-forward 6 mois train / 2 mois test |
+| Plage | ±30% du standard ICT |
+| Métrique | Profit factor max sous contrainte win rate ≥ 50% |
+| Granularité | Par setup, timeframe, et actif |
+| Recalibration | Tous les 3 mois minimum |
+| Stabilité | Écart-type / médiane < 0.15 |
+
+Fichier source unique : `config/sltp_standards.yaml`
+
+---
+
+## 23. Risk Manager (6 règles)
 
 Les règles sont codées en dur. Modification = commit git + redéploiement.
 
 1. **Max risk per trade** : 0.25% du capital (ultra-conservateur)
-2. **Stop-loss obligatoire** : défini avant l'ordre, OCO
+2. **Stop-loss obligatoire** : défini avant l'ordre, OCO (validé par §21)
 3. **Levier dynamique** : selon régime (TREND: 3x, RANGE: 2x, CRISIS: 1x)
 4. **Exposition max** : totale 200%, corrélée 100% du capital
 5. **Drawdown en escalier** : -2% réduit taille, -3% halt 4h, -5% close all 24h, -8% semaine EMERGENCY
@@ -338,15 +382,15 @@ Les règles sont codées en dur. Modification = commit git + redéploiement.
 
 ---
 
-## 22. LLM Analyst
+## 24. LLM Analyst
 
 - **Provider** : DeepSeek V4 standard
 - **Fréquence** : 1 appel / heure
 - **Fallback** : dernier contexte valide réutilisé max 2h
 - **Après TTL** : defensive_mode (pas de nouveaux trades)
-- **Rôle** : contexte interprétatif UNIQUEMENT. 35% du bias composite.
+- **Rôle** : contexte interprétatif UNIQUEMENT. 20% du bias composite (macro).
 - **Ne déclenche jamais un trade** directement.
-- **Données envoyées** : OHLCV multi-TF, swings détectés (pending inclus), FVG, funding, volumes, news titres
+- **Données envoyées** : OHLCV multi-TF, swings détectés (pending inclus), FVG, funding, volumes, news titres, données on-chain
 
 ---
 
@@ -365,6 +409,8 @@ BTC/USDT, ETH/USDT, SOL/USDT, BNB/USDT, DOT/USDT.
 - [NEW] Global Market State (unifié)
 - [NEW] Scoring Grids par setup type (6 grilles)
 - [NEW] Seuils calibrés pour expectancy max (45/60/80)
+- [NEW] SL/TP par setup (§21) — table exhaustive 7 setups + gestion dynamique
+- [NEW] ATR Multipliers Calibration (§22) — walk-forward ±30%
 - [FIX] Kill Zones calibrées données réelles crypto (UTC)
 - [FIX] Silver Bullet et Judas Swing corrigés en UTC
 - [FIX] SMT corrélation : Pearson rolling 7j + stabilité
@@ -372,6 +418,7 @@ BTC/USDT, ETH/USDT, SOL/USDT, BNB/USDT, DOT/USDT.
 - [UPD] Weekend mode, volume filter, sweep tolerance 90min
 - [UPD] LLM intégré dans bias_composite via scoring
 - [UPD] Kelly confirmé comme cap hiérarchique
+- [UPD] LLM bias composite : 35% → 20% macro (15% on-chain séparé)
 
 **v1.2** (2026-05-15)
 - [NEW] AMD, SMT Intra/Cross, Judas Swing, Silver Bullet

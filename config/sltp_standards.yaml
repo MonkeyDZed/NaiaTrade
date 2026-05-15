@@ -1,0 +1,122 @@
+# NaiaTrade — SL/TP Standards
+# Source unique de vérité pour les règles de Stop Loss et Take Profit.
+# Modifié UNIQUEMENT via commit git documenté.
+# Spec: docs/01-ict-specs-v1.3.md §21, docs/09-sltp-optimization.md
+
+judas_swing:
+  sl:
+    rule: "beyond_swept_range"
+    atr_multiplier: 0.3
+    calibrated: null          # Rempli après Phase 6
+  tp1:
+    rule: "opposite_range_boundary"
+    close_pct: 0.50
+  tp2:
+    rule: "external_swing_opposite_4h"
+    with_fvg: true
+  sizing_multiplier: 1.25
+  sizing_with_amd: 1.5
+
+amd_distribution:
+  sl:
+    rule: "opposite_range_boundary"
+    atr_multiplier: 0.0        # Pas de buffer ATR additionnel
+    calibrated: null
+  tp1:
+    rule: "adjacent_fvg"
+    close_pct: 0.50
+  tp2:
+    rule: "next_liquidity_level"
+  sizing_multiplier: 1.25
+
+turtle_soup:
+  sl:
+    rule: "buffer_atr_by_layer"
+    atr_multiplier: [0.2, 0.4, 0.7]   # [micro, short, external]
+    calibrated: null
+  tp1:
+    rule: "opposite_manipulation_zone"
+    close_pct: 0.50
+  tp2:
+    rule: "external_swing_opposite"
+  sizing_multiplier: [0.5, 1.0, 1.5]  # [micro, short, external]
+
+unicorn_model:
+  sl:
+    rule: "external_swing"
+    atr_multiplier: 0.7
+    calibrated: null
+  tp1:
+    rule: "fvg_premium_ote_overlap"
+    close_pct: 0.50
+  tp2:
+    rule: "opposite_liquidity"
+  sizing_multiplier: 1.5
+  sizing_max: 1.8
+
+silver_bullet:
+  sl:
+    rule: "nearest_opposite_swing"
+    atr_multiplier: 0.3
+    calibrated: null
+  tp1:
+    rule: "fvg_in_window"
+    close_pct: 0.50
+  tp2:
+    rule: "external_swing_opposite_4h"
+  sizing_multiplier: 1.0
+  sizing_boost_per_boost: 0.15
+  sizing_max: 1.45
+
+sweep_fvg_standard:
+  sl:
+    rule: "beyond_reference_swing_or_fvg"
+    atr_multiplier: 0.2
+    calibrated: null
+  tp1:
+    rule: "adjacent_fvg_or_ote"
+    close_pct: 0.50
+  tp2:
+    rule: "external_swing_opposite_4h"
+  sizing_multiplier: [0.5, 1.0, 1.5]  # [micro, short, external]
+
+smt_cross_asset:
+  sl:
+    rule: "beyond_smt_divergence_swing"
+    atr_multiplier: 0.2
+    calibrated: null
+  tp1:
+    rule: "adjacent_fvg"
+    close_pct: 0.50
+  tp2:
+    rule: "external_swing_opposite_4h"
+  sizing_multiplier: 1.0
+
+# Paramètres globaux de calibration
+calibration:
+  atr_range_pct: 0.30           # ±30% max
+  walk_forward_train_months: 6
+  walk_forward_test_months: 2
+  min_total_months: 24
+  recalibration_interval_months: 3
+  stability_threshold: 0.15     # Écart-type / médiane < 0.15
+
+# Gestion dynamique
+dynamic_management:
+  phase_4_fixed: true
+  phase_5_5_partial:
+    enabled: true
+    tp1_close_pct: 0.50
+    breakeven_on_tp1: true
+    early_exit_on_decaying: true
+  phase_6_trailing:
+    enabled: false               # Activé après Phase 6
+    premium_only: true           # Score ≥ 80 requis
+    trail_on_ltf_swings: true    # Basé sur swings 15m
+    trail_buffer_atr: 0.2
+    deactivate_below_standard: true  # Désactivé si score < 60
+
+# Sortie sur changement de bias
+bias_invalidation:
+  close_on_bias_flip: true      # Si bias_composite change de signe
+  close_on_llm_defensive: true  # Si LLM passe en mode défensif

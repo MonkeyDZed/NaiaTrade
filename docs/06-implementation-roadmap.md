@@ -201,6 +201,14 @@ Le bias composite est prêt à recevoir les 4 composants (structural, LLM, on-ch
 | Composite Integrator | Injection du bias LLM dans le composite (20%) |
 | Defensive Mode | Fallback TTL → pas de trades |
 
+### Livrables SL/TP (structurels)
+
+| Module | Description |
+|---|---|
+| SL/TP Calculator | Calcul SL, TP1, TP2 par setup selon règles ICT (`config/sltp_standards.yaml`) |
+| TradeIntent Generator | Entry + SL + TP1 + TP2 → TradeIntent avec taille calibrée |
+| RM Validator | Vérification distance SL (0.1%-20%), buffer liq (2×), OCO atomique |
+
 ### Livrables On-Chain (nouveau)
 
 | Module | Fichier(s) | Description |
@@ -228,10 +236,10 @@ Spécification complète : [07-on-chain-integration.md](07-on-chain-integration.
 
 ---
 
-## Phase 6 : Intégration + Tests E2E (semaines 10-11)
+## Phase 6 : Intégration + Tests E2E + Optimisation SL/TP (semaines 11-13)
 
 **Dépendances** : Phases 1-5
-**Objectif** : Système complet intégré, testé de bout en bout
+**Objectif** : Système complet intégré, testé de bout en bout, SL/TP optimisés par walk-forward
 
 ### Étapes
 
@@ -246,6 +254,22 @@ Spécification complète : [07-on-chain-integration.md](07-on-chain-integration.
    - Restart complet → état restauré
 6. **Backtest ICT complet** sur 2 ans, walk-forward
 7. **Monitoring setup** : Grafana + Telegram
+
+### Livrables SL/TP (calibration + dynamique)
+
+| Module | Description |
+|---|---|
+| Walk-Forward Calibrator | Grid search ATR multipliers ±30%, fenêtre 6/2 mois, métrique profit factor |
+| Partiel + Breakeven | Close 50% à TP1, SL → entry, sortie anticipée si DECAYING |
+| Trailing SL | Activé seulement si score PREMIUM (≥ 80), suit swings LTF 15m |
+| Bias Invalidation | Close complet si bias_composite change de signe |
+| Replay Calibration CLI | `scripts/replay_calibrate.py` — grid search paramétrique |
+
+### Critères de calibration
+- Profit factor OOS amélioré vs baseline structurelle
+- Win rate ≥ 50% sur toutes les fenêtres
+- Stabilité : écart-type multipliers < 0.15 × médiane
+- Multipliers dans [0.7×, 1.3×] du standard ICT
 
 ### Critères de passage
 - Sharpe OOS > 1.5
@@ -318,12 +342,12 @@ Système complet prêt pour le paper trading.
 | Phase 2.5 | Replay Mode (8-10 actifs) | 1-2 semaines |
 | Phase 3 | ICT Detectors | 2 semaines |
 | Phase 4 | Strategy Engine (scoring + lifecycle) | 2 semaines |
-| Phase 5 | LLM Analyst + On-Chain Integration | 2 semaines |
-| Phase 6 | Intégration + Tests E2E | 2 semaines |
+| Phase 5 | LLM Analyst + On-Chain + SL/TP structurels | 3 semaines |
+| Phase 6 | Intégration + Tests E2E + Calibration SL/TP | 3 semaines |
 | Phase 7 | Paper Trading (conditionnel) | 1 mois (30j si Replay validé) |
 | Phase 8 | Capital Réel | 3-6 mois |
 
-**Total développement** : ~12 semaines (Phases 1-6)
+**Total développement** : ~14 semaines (Phases 1-6)
 **Total validation** : ~1.5-6 mois (Phases 7-8, selon Replay Mode)
 **Total projet** : ~4-8 mois avant scaling réel
 
