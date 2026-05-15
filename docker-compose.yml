@@ -1,0 +1,83 @@
+# NaiaTrade — Docker Compose
+# Development environment
+# Production: use separate docker-compose.prod.yml
+
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: naiatrade-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-naiatrade}
+      POSTGRES_USER: ${POSTGRES_USER:-naiatrade}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-naiatrade}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-naiatrade}"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: naiatrade-redis
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # ---- Application containers (to be added per phase) ----
+
+  # data_collector:
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile
+  #   container_name: naiatrade-data-collector
+  #   depends_on: [postgres, redis]
+  #   command: python -m core.data.collector
+
+  # ict_detector:
+  #   build: .
+  #   container_name: naiatrade-ict-detector
+  #   depends_on: [postgres, redis]
+  #   command: python -m core.ict.detector
+
+  # strategy_engine:
+  #   build: .
+  #   container_name: naiatrade-strategy
+  #   depends_on: [postgres, redis]
+  #   command: python -m core.strategy.engine
+
+  # risk_manager:
+  #   build: .
+  #   container_name: naiatrade-risk
+  #   depends_on: [postgres, redis]
+  #   command: python -m core.risk.manager
+
+  # execution_engine:
+  #   build: .
+  #   container_name: naiatrade-execution
+  #   depends_on: [postgres, redis]
+  #   command: python -m core.execution.engine
+
+  # grafana:
+  #   image: grafana/grafana:latest
+  #   container_name: naiatrade-grafana
+  #   ports:
+  #     - "3000:3000"
+  #   volumes:
+  #     - grafana_data:/var/lib/grafana
+
+volumes:
+  postgres_data:
+  redis_data:
+  # grafana_data:
