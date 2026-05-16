@@ -91,7 +91,7 @@
 │                                                                     │
 │  1. Lit Global Market State                                         │
 │  2. Lit signaux ACTIVE + REINFORCED (depuis Signal Pool)            │
-│  3. Calcule bias_composite (50% structural + 35% LLM + 15% funding) │
+│  3. Calcule bias_composite (weights in config/bias.yaml — AD-022)   │
 │  4. Applique Signal Scoring (grille par setup type)                 │
 │  5. Applique Decay + Interactions                                   │
 │  6. Si score >= minimal_threshold → génère TradeIntent              │

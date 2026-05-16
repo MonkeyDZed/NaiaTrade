@@ -261,6 +261,83 @@
 
 ---
 
+## AD-022 : Formule bias_composite canonique en config versionnée
+
+**Décision** : La formule `bias_composite` et ses 4 poids (structural, LLM, on-chain, funding) vivent dans `config/bias.yaml`, validé par pydantic (`core/risk/bias_config.py`). Tout le code et la doc référencent ce fichier. Aucun poids n'est écrit en dur ailleurs.
+
+**Rejeté** : Poids en dur dans la doc (`01-ict-specs-v1.3.md`, `05-data-flow-architecture.md`, `AGENTS.md`, `07-on-chain-integration.md`).
+
+**Justification** :
+- La spec v1.3 contenait 5 versions divergentes du poids LLM (35% vs 20%) selon le doc consulté. Une source unique versionnée règle l'ambiguïté définitivement.
+- Toute modification future des poids passe par un commit git + redéploiement (AD-010), traçable via le SHA git de `bias.yaml`.
+- Les valeurs canoniques retenues : structural 0.50, LLM 0.20, on-chain 0.15, funding 0.15 — reflet de la séparation on-chain post-changelog v1.3.
+
+---
+
+## AD-023 : OCO non-atomique sur Binance Futures — transaction compensatoire
+
+**Décision** : Binance Futures ne supporte pas d'ordre OCO atomique entrée + stop-loss + take-profit. La protection post-entrée repose sur une transaction compensatoire applicative : le stop-loss (et le take-profit) sont placés immédiatement après le fill de l'entrée. Un watchdog surveille la confirmation du stop-loss : si le SL n'est pas confirmé sous un timeout dur (N ms, à calibrer en Phase 7), une close marché immédiate est émise. Le test adversarial « entrée fillée, SL rejeté → flat sous X s » est obligatoire en Phase 5/6.
+
+**Rejeté** : Hypothèse d'atomicité entrée+SL+TP (présente dans les specs v1.3).
+
+**Justification** : Les specs `03-risk-manager-spec.md:97`, `09-sltp-optimization.md:101`, et `01-ict-specs-v1.3.md:351` supposent que l'entrée et le SL sont atomiques. Or Binance Futures API ne propose qu'un OCO SL/TP sur position existante (reduceOnly), pas d'OCO 3-jambes avec entrée. Une position nue entre le fill et l'ACK du SL expose le compte en flash-crash.
+
+---
+
+## AD-024 : Formule distance liquidation canonique
+
+**Décision** : La contrainte de distance liquidation canonique est :
+`|entry - liq| >= ratio × |entry - stop|` où `ratio = min_stop_to_liquidation_ratio` (valeur par défaut 2.0 dans `config/risk.yaml`). La maintenance margin est calculée par tiers de notional selon les paliers Binance réels (pas une constante).
+
+**Rejeté** : La formule écrite dans `03-risk-manager-spec.md:220` (`distance(stop_loss, liq) >= ratio × distance(entry, liq)`) qui est mathématiquement contradictoire avec l'intention documentée et rejetterait tout stop raisonnable.
+
+**Justification** : La spec et le commentaire de `config/risk.yaml:34` décrivent la même intention (« le stop doit être 2× plus proche de l'entrée que la liquidation ») mais la formule mathématique de la spec est fausse. Le commentaire a la bonne traduction : `|entry - liq| >= 2 × |entry - stop|`. La maintenance margin à paliers Binance doit être utilisée car la valeur constante de la spec sous-estime la liquidation sur gros notional.
+
+---
+
+## AD-025 : Définition drawdown — baseline et reset
+
+**Décision** : Le drawdown est mesuré contre un high-water mark (peak equity glissant), pas contre l'open calendaire. Le daily DD est calculé sur une fenêtre glissante de 24h. Le weekly DD est calculé sur une fenêtre glissante de 7 jours. L'escalator Kill Switch (Règle 5) se déclenche sur ces métriques glissantes. Aucun reset à minuit calendaire — un saignement à cheval sur minuit ne remet pas le compteur à zéro.
+
+**Rejeté** : Baseline = open 00:00 UTC calendaire (reset journalier). Cela masquerait les drawdowns lents à cheval sur la limite calendaire.
+
+**Justification** : Sans définition explicite, la Règle 5 est inapplicable. Le reset calendaire est un « silent killer » classique : le drawdown n'atteint jamais le seuil parce que le compteur est remis à zéro toutes les 24h. La fenêtre glissante garantit qu'un -5% sur 24h glissantes est toujours détecté, quelle que soit l'heure.
+
+---
+
+## AD-026 : Kelly cold-start et ré-activation des setups
+
+**Décision** : Tant que le nombre de trades enregistrés est < 30, le Kelly cap est désactivé et le risque par trade est fixé à `max_risk_per_trade_pct` (0.25%). Lorsqu'un setup est auto-désactivé (Kelly ≤ 0 sur 50 trades), un chemin de ré-activation est obligatoire : shadow-trading sur N trades avec expectancy > 0 sur fenêtre OOS avant ré-armement. Aucun setup n'est désactivé définitivement sans chemin de retour.
+
+**Rejeté** : Kelly cap actif dès le premier trade (deadlock car besoin de trades pour calculer Kelly, besoin de Kelly pour trader). Setup désactivé définitivement (attrition garantie en marché non-stationnaire).
+
+**Justification** : Le Kelly cold-start non spécifié produirait soit un deadlock (si défaut = « pas de trade »), soit une absence de protection (si défaut = permissif). La ré-activation est nécessaire car les marchés crypto changent de régime : un setup sous-performant pendant 50 trades peut redevenir profitable.
+
+---
+
+## AD-027 : Politique backtest — single-truth, anti-look-ahead
+
+**Décision** : Le moteur de replay stateful (Phase 2.5) est la seule vérité pour les décisions go/no-go. VectorBT est utilisé uniquement pour le pré-screening de paramètres. Règles anti-look-ahead :
+- Un swing n'est utilisable qu'après sa confirmation multi-barres (w=2 closes supplémentaires, spécifié dans `01-ict-specs-v1.3.md` §1).
+- Le backtester applique le délai de confirmation swing + le délai 1 barre signal→exécution.
+- Jamais de LLM live dans un backtest, replay, ou golden dataset : seules les réponses LLM historiques enregistrées (`bias_history`) ou des mocks sont utilisés.
+
+**Rejeté** : VectorBT comme moteur de décision go/no-go. LLM live dans le replay.
+
+**Justification** : Le replay stateful capture correctement le lifecycle des signaux, le Kelly path-dependent, et le Kill Switch — que le backtest vectorisé ignore. Le LLM live dans un replay « connaît le futur » (news, prix) et produit un edge fictif. Sans délai de confirmation swing, les swings confirmés « dans le futur » génèrent un faux edge systématique.
+
+---
+
+## AD-028 : Politique Decimal pour les montants monétaires
+
+**Décision** : Toutes les valeurs monétaires (prix, quantités, notional, montants de risque, capital) utilisent `Decimal`. Les `float` sont réservés aux scores, ratios statistiques, et probabilités. La conversion Decimal ↔ float se fait uniquement aux frontières I/O (lecture YAML, envoi CCXT).
+
+**Rejeté** : Float pour toutes les valeurs, y compris prix/quantités.
+
+**Justification** : Les filtres Binance (stepSize, tickSize, minNotional) sont des frontières décimales exactes. Les erreurs d'arrondi flottant cumulées sur des centaines de trades produisent une érosion silencieuse. Le `Decimal` prévient les rejets d'ordres près de minNotional et l'imprécision cumulative. La migration est planifiée en WP-7 (conditionnée à validation humaine de cet ADR).
+
+---
+
 ## Index des sigles
 
 | Sigle | Définition |

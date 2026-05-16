@@ -97,10 +97,12 @@ Cycle fondamental ICT détecté sur **1H** via probabilités progressives (pas b
 
 ---
 
-## 6. Daily Bias (Composite LLM + Structure + Funding)
+## 6. Daily Bias (Composite LLM + Structure + Funding + On-Chain)
+
+> **Canonical weights**: See `config/bias.yaml` (AD-022). The values below are superseded.
 
 ```
-bias_composite = 0.50 × structural_bias + 0.35 × LLM_bias + 0.15 × funding_adjustment
+bias_composite = 0.50 × structural_bias + 0.20 × LLM_bias + 0.15 × on_chain_bias + 0.15 × funding_adjustment
 ```
 
 - **LLM** : DeepSeek V4 standard, update 60 min, fallback TTL 120 min, defensive_mode après
@@ -321,7 +323,9 @@ score_decayed = score_initial × exp(-rate × bars_since_detection)
 **Cap** : `max_risk_per_trade = min(ICT_size, kelly_cap)`.
 **Si Kelly <= 0** : pas de trade (espérance négative).
 **Recalcul** : tous les 50 trades (min 30 pour validité).
+**Cold-start** (AD-026) : tant que `n_trades < 30`, pas de cap Kelly — le risque par trade est fixé à `max_risk_per_trade_pct` (0.25%).
 **Per-setup auto-disable** : Kelly <= 0 pendant 50 trades → setup désactivé.
+**Ré-activation** (AD-026) : un setup désactivé peut être ré-armé après shadow-trading sur N trades avec expectancy > 0 sur fenêtre OOS. Aucun setup n'est désactivé définitivement sans chemin de retour.
 
 ---
 
@@ -348,7 +352,7 @@ score_decayed = score_initial × exp(-rate × bars_since_detection)
 **Validation Risk Manager** (règle 2) :
 - distance(entry, SL) ∈ [0.1%, 20%] du prix
 - distance(entry, SL) ≥ 2 × distance(entry, liquidation)
-- OCO atomique — si SL rejeté → entrée annulée
+- OCO atomique — impossible sur Binance Futures, remplacé par transaction compensatoire (voir AD-023).
 
 ---
 
@@ -388,7 +392,7 @@ Les règles sont codées en dur. Modification = commit git + redéploiement.
 - **Fréquence** : 1 appel / heure
 - **Fallback** : dernier contexte valide réutilisé max 2h
 - **Après TTL** : defensive_mode (pas de nouveaux trades)
-- **Rôle** : contexte interprétatif UNIQUEMENT. 20% du bias composite (macro).
+- **Rôle** : contexte interprétatif UNIQUEMENT. Poids exact défini dans `config/bias.yaml` (AD-022).
 - **Ne déclenche jamais un trade** directement.
 - **Données envoyées** : OHLCV multi-TF, swings détectés (pending inclus), FVG, funding, volumes, news titres, données on-chain
 
