@@ -231,6 +231,99 @@ class TestTradeIntent:
         )
         assert intent.notional == 5000.0
 
+    # ---- adversarial: structural validation at construction ----
+
+    def test_trade_intent_rejects_stop_equals_entry(self) -> None:
+        with pytest.raises(ValueError, match="stop_loss must not equal entry_price"):
+            TradeIntent(
+                symbol="BTCUSDT",
+                side=Side.LONG,
+                entry_price=50000.0,
+                stop_loss=50000.0,
+                size=0.1,
+                leverage=2,
+                regime=Regime.TREND_UP,
+                capital=10000.0,
+                total_balance=10000.0,
+                used_margin=2500.0,
+            )
+
+    def test_trade_intent_rejects_long_stop_above_entry(self) -> None:
+        with pytest.raises(ValueError, match="LONG requires stop_loss < entry_price"):
+            TradeIntent(
+                symbol="BTCUSDT",
+                side=Side.LONG,
+                entry_price=50000.0,
+                stop_loss=51000.0,
+                size=0.1,
+                leverage=2,
+                regime=Regime.TREND_UP,
+                capital=10000.0,
+                total_balance=10000.0,
+                used_margin=2500.0,
+            )
+
+    def test_trade_intent_rejects_short_stop_below_entry(self) -> None:
+        with pytest.raises(ValueError, match="SHORT requires stop_loss > entry_price"):
+            TradeIntent(
+                symbol="ETHUSDT",
+                side=Side.SHORT,
+                entry_price=3000.0,
+                stop_loss=2900.0,
+                size=0.5,
+                leverage=2,
+                regime=Regime.TREND_DOWN,
+                capital=5000.0,
+                total_balance=5000.0,
+                used_margin=750.0,
+            )
+
+    def test_trade_intent_rejects_non_positive_price(self) -> None:
+        with pytest.raises(ValueError, match="entry_price must be > 0"):
+            TradeIntent(
+                symbol="BTCUSDT",
+                side=Side.LONG,
+                entry_price=0.0,
+                stop_loss=49000.0,
+                size=0.1,
+                leverage=2,
+                regime=Regime.TREND_UP,
+                capital=10000.0,
+                total_balance=10000.0,
+                used_margin=2500.0,
+            )
+
+    def test_trade_intent_rejects_zero_size(self) -> None:
+        with pytest.raises(ValueError, match="size must be > 0"):
+            TradeIntent(
+                symbol="BTCUSDT",
+                side=Side.LONG,
+                entry_price=50000.0,
+                stop_loss=49500.0,
+                size=0.0,
+                leverage=2,
+                regime=Regime.TREND_UP,
+                capital=10000.0,
+                total_balance=10000.0,
+                used_margin=2500.0,
+            )
+
+    def test_trade_intent_rejects_tp_wrong_side(self) -> None:
+        with pytest.raises(ValueError, match="LONG requires take_profit > entry_price"):
+            TradeIntent(
+                symbol="BTCUSDT",
+                side=Side.LONG,
+                entry_price=50000.0,
+                stop_loss=49500.0,
+                size=0.1,
+                leverage=2,
+                regime=Regime.TREND_UP,
+                capital=10000.0,
+                total_balance=10000.0,
+                used_margin=2500.0,
+                take_profit=49000.0,
+            )
+
 
 class TestValidationResult:
     def test_validation_result_approved(self) -> None:

@@ -78,6 +78,8 @@ class TradeIntent:
     """Trade intent received from the Strategy Engine via Redis ``intent:new``.
 
     Contains all information needed for pre-trade risk validation and position sizing.
+    Raises ``ValueError`` at construction for any structurally invalid combination
+    of fields (e.g. stop on wrong side, non-positive price, zero risk distance).
     """
 
     symbol: str
@@ -94,6 +96,47 @@ class TradeIntent:
     id: UUID = field(default_factory=uuid4)
     take_profit: float | None = None
     correlation_group: CorrelationGroup | None = None
+
+    def __post_init__(self) -> None:
+        if self.entry_price <= 0:
+            raise ValueError(f"entry_price must be > 0, got {self.entry_price}")
+        if self.stop_loss <= 0:
+            raise ValueError(f"stop_loss must be > 0, got {self.stop_loss}")
+        if self.size <= 0:
+            raise ValueError(f"size must be > 0, got {self.size}")
+        if self.leverage < 1:
+            raise ValueError(f"leverage must be >= 1, got {self.leverage}")
+        if self.capital <= 0:
+            raise ValueError(f"capital must be > 0, got {self.capital}")
+        if self.total_balance <= 0:
+            raise ValueError(f"total_balance must be > 0, got {self.total_balance}")
+        if self.used_margin < 0:
+            raise ValueError(f"used_margin must be >= 0, got {self.used_margin}")
+        if self.stop_loss == self.entry_price:
+            raise ValueError(
+                f"stop_loss must not equal entry_price (both are {self.entry_price})"
+            )
+        if self.side == Side.LONG and self.stop_loss >= self.entry_price:
+            raise ValueError(
+                f"LONG requires stop_loss < entry_price, "
+                f"got stop_loss={self.stop_loss} entry_price={self.entry_price}"
+            )
+        if self.side == Side.SHORT and self.stop_loss <= self.entry_price:
+            raise ValueError(
+                f"SHORT requires stop_loss > entry_price, "
+                f"got stop_loss={self.stop_loss} entry_price={self.entry_price}"
+            )
+        if self.take_profit is not None:
+            if self.side == Side.LONG and self.take_profit <= self.entry_price:
+                raise ValueError(
+                    f"LONG requires take_profit > entry_price, "
+                    f"got take_profit={self.take_profit} entry_price={self.entry_price}"
+                )
+            if self.side == Side.SHORT and self.take_profit >= self.entry_price:
+                raise ValueError(
+                    f"SHORT requires take_profit < entry_price, "
+                    f"got take_profit={self.take_profit} entry_price={self.entry_price}"
+                )
 
     @property
     def risk_per_unit(self) -> float:
