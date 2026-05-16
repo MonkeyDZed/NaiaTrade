@@ -84,7 +84,9 @@ L'état est persisté en Postgres.
 - Slippage modélisé (0.01-0.05% selon liquidité de l'actif)
 - Funding rate historique appliqué toutes les 8h
 - Délai 1 bougie entre signal et exécution
+- Délai de confirmation swing (w=2 closes) avant utilisation du swing (AD-027)
 - minNotional / stepSize Binance
+- **Politique backtest** : VectorBT pour pré-screening de paramètres uniquement. Le replay stateful (Phase 2.5) est la seule vérité go/no-go (AD-027).
 
 ### Sortie Phase 2
 Une stratégie minimale (MA crossover) peut être backtestée sur 2 ans.

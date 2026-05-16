@@ -71,9 +71,9 @@ class KillSwitchLevel(str, Enum):
     EMERGENCY = "EMERGENCY"      # -8% weekly : arrêt total, humain requis
 ```
 
----
+> **Politique de type monétaire** (AD-028) : les prix, quantités, notional, et montants de risque utilisent `Decimal`. Les `float` sont réservés aux scores, ratios, et probabilités. La conversion aux frontières I/O est explicite.
 
-## Règle 1 : Max Risk Per Trade
+---
 
 **Principe** : Le risque est calculé AVANT l'entrée. On part du capital qu'on accepte de perdre, pas du capital disponible.
 
@@ -93,8 +93,8 @@ size = risk_amount / abs(entry_price - stop_loss)
 - Stop-loss défini avant l'ordre (pas d'exception)
 - Distance entry-stop > 0.1% du prix (stop trop proche = stop-out sur slippage)
 - Distance entry-stop < 20% du prix (stop trop loin = stratégie suspecte)
-- Ordre envoyé en OCO (entry + stop atomiques)
-- Si Binance refuse le stop → l'ordre d'entrée est annulé
+- Ordre envoyé avec SL post-fill via transaction compensatoire applicative (voir AD-023 : Binance Futures ne supporte pas d'OCO atomique entrée+SL+TP).
+- Si Binance refuse le stop → close marché immédiate via watchdog (voir AD-023).
 
 ---
 
@@ -138,6 +138,12 @@ size = risk_amount / abs(entry_price - stop_loss)
 | Weekly -8% | EMERGENCY | Manuel |
 
 **Escalade seulement** : le niveau peut monter automatiquement, descendre uniquement via cooldown ou intervention humaine.
+
+**Définition des drawdowns** (AD-025) :
+- **Baseline** : high-water mark (peak equity glissant), pas l'open calendaire.
+- **Daily DD** : fenêtre glissante de 24h. Un saignement à cheval sur minuit n'est pas reset.
+- **Weekly DD** : fenêtre glissante de 7 jours.
+- **REDUCED_SIZE** : retour à NORMAL lorsque le daily DD redescend sous le seuil après la fin du jour glissant (pas de cooldown horaire, condition de sortie = DD < seuil sur fenêtre complète).
 
 ---
 
@@ -212,15 +218,20 @@ Récupérés via `exchange.load_markets()` au démarrage, recheckés après main
 
 ## Liquidation Distance Check
 
+> Formula corrected per AD-024. The spec v1.3 contained a mathematically incorrect constraint.
+
 ```
 Pour une position isolated :
     liq_price_long = entry_price × (1 - 1/leverage + maintenance_margin)
-    liq_short = entry_price × (1 + 1/leverage - maintenance_margin)
+    liq_short   = entry_price × (1 + 1/leverage - maintenance_margin)
     
-    Vérification : distance(stop_loss, liq_price) >= min_stop_to_liq × distance(entry, liq_price)
+    Vérification (canonique, AD-024) :
+    |entry - liq| >= min_stop_to_liq_ratio × |entry - stop|
 ```
 
-`min_stop_to_liq_ratio = 2.0` → le stop doit être au moins 2× plus proche du prix d'entrée que la liquidation. Protège contre les cascades de liquidation.
+`min_stop_to_liq_ratio = 2.0` → la distance à la liquidation doit être au moins 2× plus grande que la distance au stop. Le stop reste ainsi toujours plus proche de l'entrée que la liquidation. Protège contre les cascades de liquidation.
+
+La maintenance margin est calculée par **tiers de notional selon les paliers Binance réels** (pas une constante unique). Les paliers sont récupérés via `exchange.load_markets()` et recalculés après chaque maintenance Binance.
 
 ---
 

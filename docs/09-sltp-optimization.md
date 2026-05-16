@@ -97,7 +97,7 @@ Avant exécution, le Risk Manager applique 3 contrôles sur le SL calculé :
 | **Distance minimale** | `entry - SL` > 0.1% du prix | `REJECTED` — stop trop proche, stop-out sur slippage |
 | **Distance maximale** | `entry - SL` < 20% du prix | `REJECTED` — stop trop loin, sizing inefficace |
 | **Buffer liquidation** | `distance(Entry, SL) ≥ 2 × distance(Entry, Liq)` | `REJECTED` — risque de cascade de liquidation |
-| **OCO atomique** | Entry + SL placés ensemble | Si Binance refuse le SL → entrée annulée |
+| **OCO atomique** | Entry + SL placés ensemble | Transaction compensatoire applicative (voir AD-023). |
 
 Ces contrôles sont **codés en dur** (`03-risk-manager-spec.md` §Règle 2). Modification = commit git + redéploiement.
 

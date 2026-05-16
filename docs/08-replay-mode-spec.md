@@ -628,7 +628,9 @@ scripts/
 | Pas de déconnexions WebSocket | Robustesse non testée | → Phase 7 (Paper Trading) pour ça |
 | Pas de funding rate variable | P&L overnight simulé | Appliquer funding rate historique depuis les données |
 | Données historiques = pas de black swans | Edge cases non découverts | → Phase 7 (Paper Trading) pour les edge cases |
-| LLM appelé sur données passées | Peut "voir le futur" via les données | Le LLM ne reçoit que les données jusqu'à la barre courante |
+| LLM appelé sur données passées | Peut "voir le futur" via les données | Réponses LLM historiques enregistrées (`bias_history`) ou mock ; jamais de LLM live (AD-027) |
+| Confirmation swing multi-barres | Swing "confirmé" dans le futur = faux edge | Backtester applique délai de confirmation (w=2 closes) + 1 barre signal→exec (AD-027) |
+| Single-truth backtest | VectorBT et replay donnent des résultats divergents | Le replay stateful est la seule vérité go/no-go ; VectorBT = pré-screening uniquement (AD-027) |
 
 ---
 
