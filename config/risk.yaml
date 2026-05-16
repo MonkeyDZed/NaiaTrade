@@ -1,0 +1,34 @@
+# Risk Manager Configuration — Phase 1
+# Source of truth: docs/03-risk-manager-spec.md
+# Modification = git commit + redeploy (AD-010)
+
+# Règle 1: Max risk per trade (ultra-conservative)
+max_risk_per_trade_pct: 0.0025  # 0.25%
+
+# Règle 3: Dynamic leverage by market regime
+max_leverage_by_regime:
+  TREND_UP: 3
+  TREND_DOWN: 3
+  RANGE_LOW_VOL: 2
+  RANGE_HIGH_VOL: 2
+  CRISIS: 1
+  UNKNOWN: 1
+
+# Règle 4: Maximum exposure limits
+max_total_exposure_pct: 2.0       # 200% of balance
+max_correlated_exposure_pct: 1.0  # 100% per correlation group
+
+# Règle 5: Drawdown escalator thresholds
+daily_dd_reduce_size: 0.02       # -2% daily
+daily_dd_halt: 0.03              # -3% daily
+daily_dd_close_all: 0.05         # -5% daily
+weekly_dd_emergency: 0.08        # -8% weekly
+halt_cooldown_hours: 4
+close_all_cooldown_hours: 24
+
+# Règle 6: Margin ratio thresholds
+margin_ratio_warning: 0.50       # 50% — no new trades
+margin_ratio_force_reduce: 0.70  # 70% — partial position closure
+
+# Liquidation protection (AD-024)
+min_stop_to_liquidation_ratio: 2.0  # |entry-liq| >= ratio * |entry-stop|
