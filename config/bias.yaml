@@ -1,0 +1,14 @@
+# Bias Composite Formula — Canonical weights v1.0
+# Source of truth: AD-022 (docs/02-architecture-decisions.md)
+# Modification = commit git + redeploy (AD-010).
+# Any hard-coded weights in documentation are superseded by this file.
+
+# Weights must sum to 1.0 (± 1e-9 tolerance).
+weights:
+  structural: 0.50   # trend_state 1H + external_bias 4H
+  llm_macro: 0.20    # DeepSeek V4 interpretive context
+  on_chain: 0.15     # netflow + stablecoins + cumulative delta (post-processed)
+  funding: 0.15      # Binance Funding Rate extreme detection
+
+# Bias composite is clamped to [-1.0, +1.0] after linear combination.
+# Confidence is scaled by alignment between the four components.
